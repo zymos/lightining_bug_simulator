@@ -1,0 +1,566 @@
+//////////////////////////////////////////////////////////////////////////////
+//
+// Lightning bugs emulator
+//
+//    Desciption: Blinks 17 LEDs to simulate a bunch of lightning bugs blinking. 
+//      Spread the LEDs out in your garden or anywhere for a bunch of sparse 
+//      random blinks.
+//
+//    Hardware:
+//      Arduino, I used Arduino Pro Mini
+//          Should work with most or any AVR with minor changes
+//      33 ohm resistors for 3.3V
+//      common green LEDs
+//
+//    Author: ZyMOS 4/2020
+//    
+//    License: GPLv3
+//
+///////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+/* Arduino DS18B20 temp sensor tutorial
+   More info: http://www.ardumotive.com/how-to-use-the-ds18b20-temperature-sensor-en.html
+   Date: 19/6/2015 // www.ardumotive.com */
+
+// //Include libraries
+// #include "OneWire.h"
+// #include "OneWire.cpp"
+// #include "Arduino-Temperature-Control-Library-3.8.0/DallasTemperature.h"
+// #include "Arduino-Temperature-Control-Library-3.8.0/DallasTemperature.cpp"
+
+#include <Arduino.h>
+// // Data wire is plugged into pin 2 on the Arduino
+// #define ONE_WIRE_BUS A0
+// // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
+// OneWire oneWire(ONE_WIRE_BUS);
+// // Pass our oneWire reference to Dallas Temperature. 
+// DallasTemperature sensors(&oneWire);
+
+// void setup(void)
+// {
+//   Serial.begin(9600); //Begin serial communication
+//   Serial.println("Arduino Digital Temperature // Serial Monitor Version"); //Print a message
+//   sensors.begin();
+// }
+
+// void loop(void)
+// { 
+//   // Send the command to get temperatures
+//   sensors.requestTemperatures();  
+//   Serial.print("Temperature is: ");
+//   Serial.println(sensors.getTempCByIndex(0)); // Why "byIndex"? You can have more than one IC on the same bus. 0 refers to the first IC on the wire
+//   //Update value every 1 sec.
+//   delay(1000);
+//  }
+// //////////////////////////////////////////////////////////////////////////
+// // Configure
+// //
+
+// // to debug or not to debug (turns on serial)
+#define debug 0
+
+#define F_CPU 16000000U //8MHz
+
+
+// // LED pin names for use in non-debug-mode (ie serial is off)
+// const uint8_t pin_address[] = {
+//   PD2, // PIN2; //PD2
+// 	PD3, //PD3
+// 	PD4, //PIN4; //PD4
+// 	PD5, //PIN5; //PD5
+// 	PD6, //PIN6; //PD6
+// 	PD7, //PIN7; //PB7
+// 	PB0,  //Ard8
+// 	PB1,  //Ard9
+// 	PB2,  //PIN_SPI_SS; // Ard10/PB2
+// 	PB3,  //PIN_SPI_MOSI; // pin 11/PB3
+// 	PB4,  //PIN_SPI_MISO; // pin 12/PB4
+// 	PB5,  //PIN_SPI_SCK; // pin 13/PB5
+// 	PC0,  //PIN_A0;  // pin 14/ADC0/PC0
+// 	PC1,  //PIN_A1; // pin 15/ADC1/PC1
+// 	PC2,  //PIN_A2; // pin 16/ADC2/PC2
+// //	PC3,  //PIN_A3; // pin 17/ADC3/PC3
+// 	PC4,  //PIN_A4; //  ADC4/PC4/PCINT12
+// 	PC5  //PIN_A5; //  ADC5/PC5/PCINT13
+// };
+
+const uint8_t pin_address[] = {
+  2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19
+};
+
+
+// //temp reorder
+// const uint8_t pin_address[] = {
+//   PIN_SPI_SS,  // pin 10
+// 	PIN_SPI_MOSI,  // pin 11
+// 	PIN_SPI_MISO,  // pin 12
+// 	PIN_SPI_SCK,  // pin 13
+// 	PIN_A0,   // pin 14
+
+// 	PIN_A1,  // pin 15
+// 	PIN_A2,  // pin 16
+// 	PIN_A3,  // pin 17
+//   PIN_A5,
+//   PIN1,  //RXD, in non-debug-mode (ie serial is off)
+//   PIN2, 
+
+//   PIN3, 
+//   PIN_A4,
+//   PIN7,
+
+//   PIN4,
+// 	PIN5,
+// PIN6, 
+
+
+//   PIN0, //TXD, in non-debug-mode (ie serial is off)
+//   PIN_A5
+
+	
+// };
+
+// // LED on/off times
+#define min_on_time 2 // in 1/10 of a second (ie 10 = 1 second)
+#define max_on_time 8
+#define min_off_time 100
+#define max_off_time 300
+
+
+// // probablility of LED going off
+#define led_probability 60 // percentage, max 100
+
+
+// // Max LEDs allowed to be on, max current supplied by pins in 200mA
+#define max_leds_on 3
+
+
+
+
+
+
+// ////////////////////////////////////////////////////////////////////////
+// // Code
+// //
+
+
+
+// /////////////////////////////////////////////////
+// // Global variables
+// //
+
+uint16_t time_counter=0;
+const uint8_t max_leds = sizeof(pin_address) / sizeof(pin_address[0]);
+// const uint8_t max_leds = 17;
+uint16_t led_on_count[max_leds];
+uint16_t led_off_count[max_leds];
+uint8_t led_available[max_leds];
+uint8_t led_on[max_leds];
+
+
+
+// ///////////////////////////////////////////////////
+// // Functions
+// //
+
+
+// // Creates a 100ms counter
+// //    Uses timer interrupt
+ISR(TIMER1_OVF_vect){  // Reset timer, add to count
+  TCNT1 = 59286;    //reset timer 
+  time_counter++;   // increments every 100ms
+
+  // Reset all, so it wont get stuck at max
+  // uint8_t x=0;
+  // if(time_counter > 65000){
+  //   time_counter = 0;
+  //   for(x=0;x<max_leds;x++){
+  //     led_on_count[x] = 0;
+  //     led_off_count[x] = 0;
+  //     led_available[x] = 1;
+  //     led_on[x] = 0;
+  //   }
+  // }
+}
+
+
+// // Turns on/off LED
+void set_led(uint8_t led_number, uint8_t led_status){
+  uint8_t pin_num;
+
+  // // dont use pin 0-1 they are TXD, RXD
+  //    Ard0/PD0 = RX
+  //    Ard1/PD1 = TX
+
+  led_number += 2;
+
+  // // Set actual pins
+  // if(led_number == 0){
+    // pin_num = PINB0;
+  // }else if(led_number == 1){
+    // pin_num = PI
+  // }else 
+  
+  // if(led_number == 2){
+  //   pin_num = PD2; // PIN2; //PD2
+  // }else if(led_number == 3){
+  //   pin_num = PD3; //PD3
+  // }else if(led_number == 4){
+  //   pin_num = PD4; //PIN4; //PD4
+  // }else if(led_number == 5){
+  //   pin_num = PD5; //PIN5; //PD5
+  // }else if(led_number == 6){
+  //   pin_num = PD6; //PIN6; //PD6
+  // }else if(led_number == 7){
+  //   pin_num = PD7; //PIN7; //PB7
+  // }
+  // else if(led_number == 8){
+  //  pin_num = PB0;  //Ard8
+  // }
+  // else if(led_number == 9){
+  //  pin_num = PB1;  //Ard9
+  // }
+  // else if(led_number == 10){
+  //   pin_num = PB2;  //PIN_SPI_SS; // Ard10/PB2
+  // }else if(led_number == 11){
+  //   pin_num = PB3;  //PIN_SPI_MOSI; // pin 11/PB3
+  // }else if(led_number == 12){
+  //   pin_num = PB4;  //PIN_SPI_MISO; // pin 12/PB4
+  // }else if(led_number == 13){
+  //   pin_num = PB5;  //PIN_SPI_SCK; // pin 13/PB5
+  // }else if(led_number == 14){
+  //   pin_num = PC0;  //PIN_A0;  // pin 14/ADC0/PC0
+  // }else if(led_number == 15){
+  //   pin_num = PC1;  //PIN_A1; // pin 15/ADC1/PC1
+  // }else if(led_number == 16){
+  //   pin_num = PC2;  //PIN_A2; // pin 16/ADC2/PC2
+  // }else if(led_number == 17){
+  //   pin_num = PC3;  //PIN_A3; // pin 17/ADC3/PC3
+  // }else if(led_number == 18){
+  //   pin_num = PC4;  //PIN_A4; //  ADC4/PC4/PCINT12
+  // }else if(led_number == 19){
+  //   pin_num = PC5;  //PIN_A5; //  ADC5/PC5/PCINT13
+  // }
+  //}else if(led_number == 21){
+  //else if(led_number == 20){ // Pins A6, A7 are analog only
+  //  pin_num = PIN_A6; // 
+  //}else if(led_number == 21){
+  //  pin_num = PIN_A7; 
+  //}
+        // set_led(led_number,1); // turn off all leds
+        // delay(100);
+        // set_led(led_number,0);
+        // delay(100);
+ 
+  // pin_num = pin_address[led_number];
+  // pin_num = pin_address[LED_BUILTIN];
+  pin_num = led_number;
+
+  // turn led on/off
+  if(led_status == 1){
+    digitalWrite(pin_num,HIGH);
+  }else{
+    digitalWrite(pin_num,LOW);
+  }
+}
+
+
+// // Blinks on/off the leds for each led
+void bleep(uint8_t led_number){
+
+  uint8_t total_leds_on=0;
+
+  if (time_counter  > (65535 - max_off_time)){
+    // Time counter will reset soon, 16-bit
+    // force resetting leds
+      set_led(led_number,0); // makes sure its off
+      led_on[led_number] = 0;    
+      led_available[led_number] = 1; // LED is available again
+
+  }else if (led_available[led_number] == 1){ // LED is not set or waiting
+    if(random(1,100) <= led_probability){ // LED (chance every delay)
+      // get sum of leds on
+      for(uint8_t i=0; i < max_leds; i++){ 
+        total_leds_on += led_on[i];
+      }
+      // prevent too many leds on, pins 200mA max
+      if( total_leds_on < max_leds_on ){ 
+       set_led(led_number,1);
+        // digitalWrite(LED_BUILTIN,HIGH); // LED on
+        led_on_count[led_number] = random(min_on_time,max_on_time) + time_counter; // Time LED is on
+        led_off_count[led_number] = random(min_off_time,max_off_time) + time_counter; // time LED is off
+        led_available[led_number] = 0;
+        led_on[led_number] = 1;
+      }
+    }
+  }else{ // LED is already in process
+    if(time_counter == led_on_count[led_number]){ // LED on time is over
+      set_led(led_number,0);
+      led_on[led_number] = 0;
+    }else if(time_counter >= led_off_count[led_number]){ 
+      // Off time is over
+      // or counter has/will reset  (time_counter + max_off_time) < time_counter 
+      set_led(led_number,0); // makes sure its off
+      led_on[led_number] = 0;    
+      led_available[led_number] = 1; // LED is available again
+    }
+  }
+  // if(debug){
+  //   Serial.print(time_counter);
+  //   Serial.print(": num=");
+  //   Serial.print(led_number);
+  //   Serial.print(": avail=");
+  //   Serial.print(led_available[led_number]);
+  //   Serial.print(": on_cnt=");
+  //   Serial.print(led_on_count[led_number]);
+  //   Serial.print(": off_cnt=");
+  //   Serial.print(led_off_count[led_number]);
+  //   Serial.print(": on?");
+  //   Serial.println(led_on[led_number]);              
+  // }
+}
+
+
+
+// ///////////////////////////////////////////////////
+// // Initialize
+// //
+void setup() {
+
+  // Serial
+  if(debug){
+    Serial.begin(9600);           // set up Serial library at 9600 bps
+    Serial.println("Starting program..."); 
+  }
+
+
+  // pinMode(PIN2, OUTPUT);
+  for(uint8_t x=0; x<max_leds; x++){
+    pinMode(pin_address[x], OUTPUT);
+  }
+  // for(uint8_t y=2; y<17; y++){
+  //   pinMode(y, OUTPUT);
+  // }
+
+  // Test LED
+  for(uint8_t x=0; x<max_leds; x++){
+    set_led(x, 1);
+    delay(100);
+  }
+  for(uint8_t x=0; x<max_leds; x++){
+    set_led(x, 0);
+    delay(100);
+  }
+  delay(500);
+
+  // Initalize counter (timer 1) (after test sweep)
+  TCCR1A = 0;
+  TCCR1B = 0;
+  TCNT1 = 59286 ; //reset timer 65536-16000000/256/10 = 100ms
+  TCCR1B |= (1 << CS12); // Prescaler 256
+  TIMSK1 |= (1 << TOIE1); // interrupt (increments count every 100ms)
+
+}
+
+// void setup() {
+
+//   if(debug){
+//     Serial.begin(9600);           // set up Serial library at 9600 bps
+//     Serial.println("Starting program..."); 
+
+//   }
+
+
+
+//   for(uint8_t x=0; x<max_leds; x++){
+//     pinMode(pin_address[x], OUTPUT);
+//   }
+
+
+
+
+
+
+
+//   // LED test (loop through each led, sweeping on/off in 1s intervals)
+//   uint8_t led_number = 1;
+//   uint8_t led_number_p = 1;
+//   if(debug){  Serial.println("Testing each LED..."); }
+//   // while(1){
+
+//   for(led_number=0; led_number < (max_leds); led_number++){ 
+//     set_led(led_number,0); // turn off all leds
+//   }
+
+//   for(led_number=0; led_number < (max_leds+1); led_number++){ 
+//       if(!(led_number == (max_leds))){
+//         set_led(led_number,1); // turn on led
+//       }
+//       if(!(led_number == 0)){
+//         set_led(led_number-1,0); // turn off led
+//       }
+//       if(debug){
+//         for(led_number_p=0; led_number_p < (max_leds); led_number_p++){
+//           Serial.print(led_on[led_number_p]);
+//         }
+//         Serial.println();
+//       }
+//       delay(1000);
+//       // maybe run random a few times to get it randomy
+//   }
+//   //}
+
+
+
+//   // Initalize counter (timer 1) (after test sweep)
+//   TCCR1A = 0;
+//   TCCR1B = 0;
+//   TCNT1 = 59286 ; //reset timer 65536-16000000/256/10 = 100ms
+//   TCCR1B |= (1 << CS12); // Prescaler 256
+//   TIMSK1 |= (1 << TOIE1); // interrupt (increments count every 100ms)
+
+
+// }
+
+
+// ///////////////////////////////////////////////////
+// // Main loop
+// //
+
+void loop(){
+
+  while(1){
+    
+    // digitalWrite(PIN2,HIGH);
+    // delay(500);
+    // digitalWrite(PIN2,LOW);
+    // delay(500);
+    uint8_t led_number = 1;
+    
+    
+    // process each led, decide to blink or wait
+    for(uint8_t led_number=0;led_number<max_leds;led_number++){
+
+      bleep(led_number);
+      // set_led(led_number,1);
+      if(debug){
+        Serial.print(led_on[led_number]);
+      }
+    }
+
+
+
+  //  for(led_number=0; led_number < (17); led_number++){ 
+    //  digitalWrite(pin_address[led_number],HIGH);
+    //  delay(200);
+  //  }
+  //  delay(500);
+  // for(led_number=0; led_number < (17); led_number++){ 
+      // digitalWrite(pin_address[led_number],LOW);   
+
+ //  for(led_number=0; led_number < (17); led_number++){ 
+        // set_led(led_number,1); // turn off all leds
+        // delay(100);
+    // }
+    // for(led_number=0; led_number < (17); led_number++){ 
+      // set_led(led_number,0);
+    // }
+    // delay(500);
+    // for(led_number=0; led_number < (max_leds); led_number++){ 
+    //   set_led(led_number,0); // turn off all leds
+    // }
+    // delay(500);
+  // }
+  // delay(500);
+  //    for(led_number=2; led_number < (19); led_number++){ 
+  //    digitalWrite(led_number,HIGH);
+  //    delay(200);
+  //  }
+  //  delay(500);
+  // for(led_number=2; led_number < (19); led_number++){ 
+  //     digitalWrite(led_number,LOW);   
+
+ //  for(led_number=0; led_number < (17); led_number++){ 
+        // set_led(led_number,1); // turn off all leds
+        // delay(100);
+    // }
+    // for(led_number=0; led_number < (17); led_number++){ 
+      // set_led(led_number,0);
+    // }
+    // delay(500);
+    // for(led_number=0; led_number < (max_leds); led_number++){ 
+    //   set_led(led_number,0); // turn off all leds
+    // }
+    // delay(500);
+  // }
+
+
+
+  // for(uint8_t x=0; x<max_leds; x++){
+  //   set_led(x, 1);
+  //   delay(100);
+  // }
+  // for(uint8_t x=0; x<max_leds; x++){
+  //   set_led(x, 0);
+  //   delay(100);
+  // }
+  // delay(500);
+
+  }
+}
+// void loop() {
+
+//   if(debug){
+//     Serial.print("\nLED status: ");
+//     Serial.print(time_counter);
+//     Serial.print(": ");
+//   }
+
+//   //maybe skip bleep when timer_count < time_on + time_off
+
+//   // process each led, decide to blink or wait
+//   for(uint8_t led_number=0;led_number<max_leds;led_number++){
+
+//     bleep(led_number);
+//     // set_led(led_number,1);
+//     if(debug){
+//       Serial.print(led_on[led_number]);
+//     }
+//   }
+
+
+
+
+//   // delay(200);
+//   // digitalWrite(PIN_SPI_SS,HIGH);
+//   //   digitalWrite(PIN_SPI_MOSI,HIGH);
+//   //     digitalWrite(PIN_A0,HIGH);
+//   //   digitalWrite(PIN_A1,HIGH);
+//   //     digitalWrite(PIN_A2,HIGH);
+//   //   digitalWrite(PIN_A3,HIGH);
+//   //     digitalWrite(PIN_A4,HIGH);
+//   //   digitalWrite(PIN_A5,HIGH);
+    
+//   // delay(200);
+//   // digitalWrite(PIN_SPI_SS,LOW);  
+//   //   digitalWrite(PIN_SPI_MOSI,LOW);  
+//   // digitalWrite(PIN_A0,LOW);  
+//   //   digitalWrite(PIN_A1,LOW); 
+//   //     digitalWrite(PIN_A2,LOW);  
+//   //   digitalWrite(PIN_A3,LOW); 
+//   //     digitalWrite(PIN_A4,LOW);  
+//   //   digitalWrite(PIN_A5,LOW); 
+//   // delay(2000);
+
+
+
+
+
+//   // Sleeps for 50ms
+//   delay(50);
+// }
+
+
