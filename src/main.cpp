@@ -9,7 +9,8 @@
 //    Hardware:
 //      Arduino, I used Arduino Pro Mini
 //          Should work with most or any AVR with minor changes
-//      240-330 ohm resistors for 5V
+//      240-330 Ohm resistors for 5V
+//      120-180 Ohm Resistors for 3.3V
 //      common green LEDs
 //
 //    Author: ZyMOS 4/2020
@@ -66,7 +67,7 @@ const uint8_t pin_address[] = {
 // (this will occur every counter_timer_div so keep low)
 
 
-// Max LEDs allowed to be on, max current supplied by pins in 200mA
+// Max LEDs allowed to be on
 #define max_leds_on 3
 
 
