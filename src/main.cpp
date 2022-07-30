@@ -9,7 +9,7 @@
 //    Hardware:
 //      Arduino, I used Arduino Pro Mini
 //          Should work with most or any AVR with minor changes
-//      33 ohm resistors for 3.3V
+//      240-330 ohm resistors for 5V
 //      common green LEDs
 //
 //    Author: ZyMOS 4/2020
@@ -19,17 +19,16 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 
-
-
-
-
-// //Include libraries
+//Include libraries
 #include <Arduino.h>
+#include <avr/wdt.h> // Watch-dog timer
 
 
-///////////////////////////////////////////////////////////////////////////
-// Configure
-//
+
+//////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////
+////  Configure
+////
 
 // to debug or not to debug (turns on serial)
 #define debug 0
@@ -58,32 +57,39 @@ const uint8_t pin_address[] = {
 #define max_on_time 15 // 1/10s
 #define mean_on_time 7 // 1/10s
 
-#define min_off_time 20 // 1/10s
-#define max_off_time 400 // 1/10s
-#define mean_off_time 300 // 1/10s
+#define min_off_time 40 // 1/10s
+#define max_off_time 600 // 1/10s
+#define mean_off_time 400 // 1/10s
 
 // probablility of LED going off [NOT SURE IF THIS IS REALLY NEEDED]
-#define led_probability 20 // (led_probability)/1000 chance, (this will occur every counter_timer_div so keep low)
+#define led_probability 20 // (led_probability)/1000 chance, 
+// (this will occur every counter_timer_div so keep low)
 
 
 // Max LEDs allowed to be on, max current supplied by pins in 200mA
 #define max_leds_on 3
 
 
-// Inverted LED (led normally on) TODO
+// Inverted LED (led normally on) 
 //   1 = LEDs common Vcc
 //   0 = LEDs common GND
-#define led_is_inverted 1 //1 // TODO
+#define led_is_inverted 1
 
 
 // Run LED test sweep
 #define led_test 0
+#define inf_led_test 0
+
+
+
+
 
 
 
 ////////////////////////////////////////////////////////////////////////
-// Code
-//
+////////////////////////////////////////////////////////////////////////
+//// Code
+////
 
 
 
@@ -99,8 +105,9 @@ uint16_t led_off_count[max_leds];
 uint8_t led_available[max_leds];
 uint8_t led_on[max_leds];
 
-
 const int timer_div=65635-frequency/counter_timer_div/256;
+
+
 
 ///////////////////////////////////////////////////
 // Functions
@@ -129,39 +136,6 @@ ISR(TIMER1_OVF_vect){  // Reset timer, add to count
 }
 
 
-
-// // this give a rounded int in a somewhat log scale, higher numbers more probable (TODO)
-// char rand_exp(char min, char max){ 
-//   float exp = 4;
-//   //float = (max-min)*(random(1,100)/100)^exp;
-//   char number = min + (int)((max-min)*(pow(random(1,100)/100,exp)));
-
-//   return number;
-// }
-
-// // this give a rounded int in a somewhat exp scale, lower numbers more probable (TODO)
-// char rand_exp_root(char min, char max){ 
-
-//   float exp = 1/4;
-//   float max_scaled = (float)(max-min)*(pow(random(1,100)/100,exp));
-//   char number = min + (int)(max_scaled);
-
-//   return number;
-// }
-
-// long logistic_scaled_random(long min, long max, long Pmean){
-//   // Generalized Logistic function
-//   //    increase probability around a chosen mean between max and min
-//   //    https://en.wikipedia.org/wiki/Generalised_logistic_function
-//   const long Pmin=0;
-//   const long Pmax=100;
-//   const long k=6/((Pmax-Pmin)/2);
-
-//  // long Pmean = 100 * (Pmean) / (max-min);
-//   long random_num = random(1,100);
-
-//   return ( ( (max-min) / ( 1+exp(k*(random_num - Pmean)) ) ) + min );
-// }
 
 
 
@@ -334,7 +308,10 @@ void bleep(uint8_t led_number){
   // }
 }
 
-
+////////////////////////////////////////////
+// Software reset
+//
+//void(* resetFunc) (void) = 0;//declare reset function at address 0
 
 
 // ///////////////////////////////////////////////////
@@ -365,7 +342,7 @@ void setup() {
   TIMSK1 |= (1 << TOIE1); // interrupt (increments count every 100ms)
 
   // Test LEDs
-  if(led_test){
+  if(led_test or inf_led_test){
     delay(500);
     if(debug){
       Serial.println("Testing LEDs..."); 
@@ -373,11 +350,43 @@ void setup() {
 
     // uint16_t delay_count = time_counter;
     
+    // inf led test
+    if(inf_led_test){
+      while(1){
+        if(debug){Serial.print("long led test...");}
+      for(int y=0;y<10;y++){
+        for(uint8_t x=0; x<max_leds; x++){
+          set_led(x, !led_is_inverted);
+        }        
+        delay(250);
+        for(uint8_t x=0; x<max_leds; x++){
+          set_led(x, led_is_inverted);
+        }  
+        delay(250);           
+      }
+      for(int y=0;y<10;y++){
+        for(int x=0; x<max_leds; x++){
+          set_led(x, !led_is_inverted);    
+          delay(500);
+          set_led(x, led_is_inverted);
+          delay(500);
+        }           
+      }
+      }
+    }
     for(uint8_t x=0; x<max_leds; x++){
       set_led(x, !led_is_inverted);
       // lets u check timing of actual circuit (1s)
     // while(time_counter < 10 + delay_count ){
-        delay(250);
+        delay(500);
+    // }
+    // delay_count = time_counter;
+    }
+    for(uint8_t x=0; x<max_leds; x++){
+      set_led(x, !led_is_inverted);
+      // lets u check timing of actual circuit (1s)
+    // while(time_counter < 10 + delay_count ){
+        delay(500);
     // }
     // delay_count = time_counter;
     }
@@ -386,7 +395,7 @@ void setup() {
       set_led(x, led_is_inverted);
       // lets u check timing of actual circuit (1s)
     //  while(10 + delay_count > time_counter){
-      delay(250);
+      delay(500);
     //  }
     //  delay_count = time_counter;
     }
@@ -405,6 +414,8 @@ void setup() {
     // Serial.println(weighted_random_probability(100,700,300));
   // }
   // while(1){1;}
+
+  wdt_enable(WDTO_8S); //Enable WDT with a timeout of 8 seconds
 }
 
 
@@ -414,7 +425,6 @@ void setup() {
 //
 
 void loop(){
-
 
   //while(time_counter < 3000){
   while(1){
@@ -435,7 +445,10 @@ void loop(){
     if(debug){
       Serial.println();
     }
-    delay(1);
+
+    wdt_reset(); //kick the watchdog
+
+    delay(2);
 
   }
 }

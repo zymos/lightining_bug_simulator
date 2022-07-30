@@ -1,0 +1,6 @@
+make --dry-run --always-make --keep-going --print-directory
+make: Entering directory '/mnt/1tbhome/zymos_dirs/Online Storage/Zoho Docs/Documents/working-dirs/PlatformIO/Projects/lightining bug'
+make: Leaving directory '/mnt/1tbhome/zymos_dirs/Online Storage/Zoho Docs/Documents/working-dirs/PlatformIO/Projects/lightining bug'
+ 
+Makefile:2: *** missing separator.  Stop.
+
