@@ -23,7 +23,7 @@
 //Include libraries
 #include <Arduino.h>
 #include <avr/wdt.h> // Watch-dog timer
-
+#include <MemoryFree.h>
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -34,12 +34,18 @@
 // to debug or not to debug (turns on serial)
 #define debug 0
 
-#ifdef F_CPU
-#undef F_CPU
-#endif
-#define F_CPU 4000000UL //8MHz
+// Run LED test sweep
+#define led_test 0
+#define inf_led_test 1
 
-#define frequency 4000000
+
+
+#ifdef F_CPU
+  #undef F_CPU
+#endif
+#define F_CPU 4000000UL //4MHz
+
+#define frequency 4000000 //4MHz
 //Hz
 
 
@@ -75,12 +81,6 @@ const uint8_t pin_address[] = {
 //   1 = LEDs common Vcc
 //   0 = LEDs common GND
 #define led_is_inverted 1
-
-
-// Run LED test sweep
-#define led_test 0
-#define inf_led_test 0
-
 
 
 
@@ -251,9 +251,6 @@ void bleep(uint8_t led_number){
       // }
    //   total_leds_on = 1;
 
-
-
-
       // prevent too many leds on
       if( total_leds_on < max_leds_on ){ 
         set_led(led_number,1);
@@ -321,10 +318,10 @@ void bleep(uint8_t led_number){
 void setup() {
 
   // Serial
-  if(debug){
+ // if(debug){
     Serial.begin(9600);           // set up Serial library at 9600 bps
     Serial.println("Starting program..."); 
-  }
+ // }
 
 
   // Set output pins
@@ -421,24 +418,31 @@ void setup() {
 
 
 
-///////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////////////
 // Main loop
 //
 
+  // uint16_t ccc = 0;
+  // uint16_t ddd = 0;
+
+
 void loop(){
+  // DO NOT PUT AN INFINIT LOOP IN loop(),  //
+  //   It fails after hours of looping      //
 
   //while(time_counter < 3000){
-  while(1){
 
-    // process each led, decide to blink or wait
+    // debug, prints interval number
     if(debug){
       Serial.print(time_counter);
       Serial.print('-');
     }
     for(uint8_t led_number=0;led_number<max_leds;led_number++){
-
+      // Check and light up LEDs, decide to blink or wait
       bleep(led_number);
-      // set_led(led_number,1);
+
+      // prints status of LEDs
       if(debug){
         Serial.print(led_on[led_number]);
       }
@@ -449,9 +453,16 @@ void loop(){
 
     wdt_reset(); //kick the watchdog
 
-    delay(2);
+    delay(3);
+    // ccc++;
 
-  }
+    // if(ccc > 50000){
+    //   Serial.print(ddd);
+    //   Serial.print("freeMemory()=");
+    //   Serial.println(freeMemory());
+    //   ccc=0;
+    //   ddd++;
+    // } 
 }
 
 
