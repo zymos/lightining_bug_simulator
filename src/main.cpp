@@ -13,7 +13,7 @@
 //      120-180 Ohm Resistors for 3.3V
 //      common green LEDs
 //
-//    Author: ZyMOS 4/2020
+//    Author: ZyMOS 4/2020 - 2022
 //    
 //    License: GPLv3
 //
@@ -23,7 +23,7 @@
 //Include libraries
 #include <Arduino.h>
 #include <avr/wdt.h> // Watch-dog timer
-#include <MemoryFree.h>
+// #include <MemoryFree.h> // check for memory leaks
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -36,17 +36,14 @@
 
 // Run LED test sweep
 #define led_test 0
-#define inf_led_test 1
+#define inf_led_test 0
 
-
-
+// Frequence
 #ifdef F_CPU
   #undef F_CPU
 #endif
-#define F_CPU 4000000UL //4MHz
-
-#define frequency 4000000 //4MHz
-//Hz
+#define F_CPU 8000000UL //4MHz
+#define frequency 8000000 //4MHz
 
 
 #define counter_timer_div 10 //milisecs
@@ -60,13 +57,13 @@ const uint8_t pin_address[] = {
 // LED on/off times 
 //   random generated between min and max, with mean 60% of the time
 //   in 1/10 of a sec (ie 10=1s)
-#define min_on_time 5 // in 1/10s
-#define max_on_time 15 // 1/10s
-#define mean_on_time 7 // 1/10s
+#define min_on_time 2 // in 1/10s
+#define max_on_time 7 // 1/10s
+#define mean_on_time 3 // 1/10s
 
-#define min_off_time 40 // 1/10s
-#define max_off_time 600 // 1/10s
-#define mean_off_time 400 // 1/10s
+#define min_off_time 50 // 1/10s
+#define max_off_time 500 // 1/10s
+#define mean_off_time 300 // 1/10s
 
 // probablility of LED going off [NOT SURE IF THIS IS REALLY NEEDED]
 #define led_probability 20 // (led_probability)/1000 chance, 
@@ -94,10 +91,13 @@ const uint8_t pin_address[] = {
 
 
 
+
+
 /////////////////////////////////////////////////
 // Global variables
 //
 
+// Various counters
 uint16_t time_counter=60;
 const uint8_t max_leds = sizeof(pin_address) / sizeof(pin_address[0]);
 // const uint8_t max_leds = 17;
@@ -106,14 +106,25 @@ uint16_t led_off_count[max_leds];
 uint8_t led_available[max_leds];
 uint8_t led_on[max_leds];
 
+// timer1 division, start time for timer1
 const int timer_div=65635-frequency/counter_timer_div/256;
+
+// delay within loop()
+const uint8_t loop_delay=3;
+
+// Soft reset counter
+uint32_t softreset_count = 0;
+//  6h * 3200s/m * 1000ms/s / loop_delay
+//  30m * 60 s/m * 1000 ms/s / loop_delay
+const uint32_t softreset_count_max = 600000;// //6 * 3200 * 1000 / loop_delay;
+
+
 
 
 
 ///////////////////////////////////////////////////
 // Functions
 //
-
 
 // // Creates a 100ms counter
 // //    Uses timer interrupt
@@ -200,7 +211,11 @@ void set_led(uint8_t led_number, uint8_t led_status){
       digitalWrite(pin_num,LOW);
     }
   }
+
+  // Reset the counter, if it doesn't get reset after a time, MCU gets soft reset
+  softreset_count = 0;
 }
+
 
 
 
@@ -306,15 +321,101 @@ void bleep(uint8_t led_number){
   // }
 }
 
+
+
+
+
+// LED tests
+void led_test_suite(void){
+  // Test LEDs
+
+  uint8_t z = 1;
+
+  
+  if(led_test or inf_led_test){
+    delay(500);
+    if(debug){
+      Serial.println("Testing LEDs..."); 
+    }
+
+    // uint16_t delay_count = time_counter;
+    
+    // inf led test
+    z =1;
+
+    while(z){
+      if(debug){Serial.print("long led test...");}
+      for(int y=0;y<10;y++){
+        for(uint8_t x=0; x<max_leds; x++){
+          set_led(x, !led_is_inverted);
+        }        
+        delay(250);
+        for(uint8_t x=0; x<max_leds; x++){
+          set_led(x, led_is_inverted);
+        }  
+        delay(250);           
+      }
+      for(int y=0;y<10;y++){
+        for(int x=0; x<max_leds; x++){
+          set_led(x, led_is_inverted);    
+          delay(500);
+          set_led(x, !led_is_inverted);
+          delay(500);
+        }           
+      }
+      
+    
+      for(uint8_t x=0; x<max_leds; x++){
+        set_led(x, !led_is_inverted);
+        // lets u check timing of actual circuit (1s)
+      // while(time_counter < 10 + delay_count ){
+          delay(500);
+      // }
+      // delay_count = time_counter;
+      }
+      for(uint8_t x=0; x<max_leds; x++){
+        set_led(x, !led_is_inverted);
+        // lets u check timing of actual circuit (1s)
+      // while(time_counter < 10 + delay_count ){
+          delay(500);
+      // }
+      // delay_count = time_counter;
+      }
+
+      for(uint8_t x=0; x<max_leds; x++){
+        set_led(x, led_is_inverted);
+        // lets u check timing of actual circuit (1s)
+      //  while(10 + delay_count > time_counter){
+        delay(500);
+      //  }
+      //  delay_count = time_counter;
+      }
+    // stop the test if not inf
+    if(!inf_led_test){
+      z=0;
+    }
+    }
+
+  }
+
+}
+
+
+
+
+
 ////////////////////////////////////////////
 // Software reset
 //
-//void(* resetFunc) (void) = 0;//declare reset function at address 0
+void(* soft_reset_function) (void) = 0;//declare reset function at address 0
 
 
-// ///////////////////////////////////////////////////
-// // Initialize
-// //
+
+
+
+///////////////////////////////////////////////////
+// Initialize
+//
 void setup() {
 
   // Serial
@@ -339,65 +440,9 @@ void setup() {
   TCCR1B |= (1 << CS12); // Prescaler 256
   TIMSK1 |= (1 << TOIE1); // interrupt (increments count every 100ms)
 
-  // Test LEDs
-  if(led_test or inf_led_test){
-    delay(500);
-    if(debug){
-      Serial.println("Testing LEDs..."); 
-    }
+  // LED tests
+  led_test_suite();
 
-    // uint16_t delay_count = time_counter;
-    
-    // inf led test
-    if(inf_led_test){
-      while(1){
-        if(debug){Serial.print("long led test...");}
-      for(int y=0;y<10;y++){
-        for(uint8_t x=0; x<max_leds; x++){
-          set_led(x, !led_is_inverted);
-        }        
-        delay(250);
-        for(uint8_t x=0; x<max_leds; x++){
-          set_led(x, led_is_inverted);
-        }  
-        delay(250);           
-      }
-      for(int y=0;y<10;y++){
-        for(int x=0; x<max_leds; x++){
-          set_led(x, !led_is_inverted);    
-          delay(500);
-          set_led(x, led_is_inverted);
-          delay(500);
-        }           
-      }
-      }
-    }
-    for(uint8_t x=0; x<max_leds; x++){
-      set_led(x, !led_is_inverted);
-      // lets u check timing of actual circuit (1s)
-    // while(time_counter < 10 + delay_count ){
-        delay(500);
-    // }
-    // delay_count = time_counter;
-    }
-    for(uint8_t x=0; x<max_leds; x++){
-      set_led(x, !led_is_inverted);
-      // lets u check timing of actual circuit (1s)
-    // while(time_counter < 10 + delay_count ){
-        delay(500);
-    // }
-    // delay_count = time_counter;
-    }
-
-    for(uint8_t x=0; x<max_leds; x++){
-      set_led(x, led_is_inverted);
-      // lets u check timing of actual circuit (1s)
-    //  while(10 + delay_count > time_counter){
-      delay(500);
-    //  }
-    //  delay_count = time_counter;
-    }
-  }
   // pause before start
   delay(250);
 
@@ -431,6 +476,16 @@ void loop(){
   // DO NOT PUT AN INFINIT LOOP IN loop(),  //
   //   It fails after hours of looping      //
 
+  // Soft Reset
+  //  counter gets reset when led function is called
+  //  if counter goes above max, MCU preforms a soft reset
+  //  WDT should catch these, but wasn't, for what ever reason
+  if( softreset_count > softreset_count_max){
+    soft_reset_function();
+  }else{
+    softreset_count++;
+  }
+
   //while(time_counter < 3000){
 
     // debug, prints interval number
@@ -438,22 +493,25 @@ void loop(){
       Serial.print(time_counter);
       Serial.print('-');
     }
+
+    // process all leds
     for(uint8_t led_number=0;led_number<max_leds;led_number++){
       // Check and light up LEDs, decide to blink or wait
       bleep(led_number);
 
       // prints status of LEDs
-      if(debug){
-        Serial.print(led_on[led_number]);
-      }
+      if(debug){ Serial.print(led_on[led_number]); }
     }
-    if(debug){
-      Serial.println();
-    }
+
+    // debug (newline)
+    if(debug){ Serial.println(); }
 
     wdt_reset(); //kick the watchdog
 
-    delay(3);
+    // a delay loop
+    delay(loop_delay);
+
+
     // ccc++;
 
     // if(ccc > 50000){
