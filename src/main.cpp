@@ -26,6 +26,8 @@
 // #include <MemoryFree.h> // check for memory leaks
 
 
+
+
 //////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
 ////  Configure
@@ -38,16 +40,17 @@
 #define led_test 0
 #define inf_led_test 0
 
-// Frequence
+// Frequency
 #ifdef F_CPU
   #undef F_CPU
 #endif
-#define F_CPU 8000000UL //4MHz
-#define frequency 8000000 //4MHz
+#define F_CPU 8000000UL // (UL unsigned long) Hz
+#define frequency 8000000 // Hz
 
+// interval between LED operation
+#define counter_timer_div 10 //miliseconds
 
-#define counter_timer_div 10 //milisecs
-
+// pins used for LEDs
 const uint8_t pin_address[] = {
   2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19
   // 2,3
@@ -97,9 +100,11 @@ const uint8_t pin_address[] = {
 // Global variables
 //
 
+const uint8_t max_leds = sizeof(pin_address) / sizeof(pin_address[0]);
+
 // Various counters
 uint16_t time_counter=60;
-const uint8_t max_leds = sizeof(pin_address) / sizeof(pin_address[0]);
+
 // const uint8_t max_leds = 17;
 uint16_t led_on_count[max_leds];
 uint16_t led_off_count[max_leds];
@@ -233,9 +238,9 @@ void bleep(uint8_t led_number){
 
   // }else 
   // Serial.print(led_off_count[led_number]);
-  if(debug){Serial.print(", [");}
+  //if(debug){Serial.print(", [");}
   if(time_counter <= led_off_count[led_number] && led_available[led_number] == 1){
-    if(debug){Serial.print("!");}
+    //if(debug){Serial.print("!");}
     // Serial.print(led_off_count[led_number] );
     // Serial.print("}");
   }else if (led_available[led_number] == 1){ // LED is not set or waiting
@@ -275,37 +280,37 @@ void bleep(uint8_t led_number){
         led_off_count[led_number] = weighted_random_probability(min_off_time,max_off_time, mean_off_time) + led_on_count[led_number]; // time LED remain off after its on
         led_available[led_number] = 0; // its on so not available
         led_on[led_number] = 1;
-        if(debug){Serial.print("+");}
-      }else{
-        if(debug){Serial.print("x");}
-      }
-    }else{
-      if(debug){Serial.print("-");}
-    } 
+        //if(debug){Serial.print("+");}
+      }//else{
+      //  if(debug){Serial.print("x");}
+      //}
+    }//else{
+    //  if(debug){Serial.print("-");}
+    //} 
   }else{ // LED is already in process
     if(time_counter >= led_on_count[led_number]){ // LED on time is over
       set_led(led_number,0);
       led_on[led_number] = 0;
       led_available[led_number] = 1; // LED is available again
-      if(debug){Serial.print("^");}
+      //if(debug){Serial.print("^");}
     }else if(time_counter >= led_off_count[led_number]){ 
-      if(debug){Serial.print("~");}
+      //if(debug){Serial.print("~");}
       // Off time is over
       // or counter has/will reset  (time_counter + max_off_time) < time_counter 
       set_led(led_number,0); // makes sure its off
       led_on[led_number] = 0;    
       led_available[led_number] = 1; // LED is available again
-    }else{
-      if(debug){Serial.print("*");}
-    }
+    }//else{
+    //  if(debug){Serial.print("*");}
+    //}
   }
-  if(debug){
-    Serial.print("](");
-    Serial.print(led_on_count[led_number]);
-    Serial.print(", ");
-    Serial.print(led_off_count[led_number]);   
-    Serial.print(") ");
-  }
+  //if(debug){
+    //Serial.print("](");
+    //Serial.print(led_on_count[led_number]);
+    //Serial.print(", ");
+    //Serial.print(led_off_count[led_number]);   
+    //Serial.print(") ");
+  //}
   // if(debug){
   //   Serial.print(time_counter);
   //   Serial.print(": num=");
@@ -403,6 +408,27 @@ void led_test_suite(void){
 
 
 
+//////////////////////////////////////////////////////
+// Overload check
+void overload_reset(void){
+
+  // if the counter is about to overload
+  if( time_counter > 65536 - max_off_time - 100){
+    // reset counter
+    time_counter = 10;
+    // reset all led counters
+    for(uint8_t x=0; x<max_leds; x++){
+      led_on_count[x] = 0;
+      led_off_count[x] = 0;
+      led_available[x] = 1;
+      led_on[x] = 0;
+
+      // turn off all leds
+      set_led(x,0);
+    }
+  }
+}
+
 
 ////////////////////////////////////////////
 // Software reset
@@ -419,10 +445,10 @@ void(* soft_reset_function) (void) = 0;//declare reset function at address 0
 void setup() {
 
   // Serial
- // if(debug){
+  if(debug){
     Serial.begin(9600);           // set up Serial library at 9600 bps
     Serial.println("Starting program..."); 
- // }
+  }
 
 
   // Set output pins
@@ -480,11 +506,11 @@ void loop(){
   //  counter gets reset when led function is called
   //  if counter goes above max, MCU preforms a soft reset
   //  WDT should catch these, but wasn't, for what ever reason
-  if( softreset_count > softreset_count_max){
-    soft_reset_function();
-  }else{
-    softreset_count++;
-  }
+//  if( softreset_count > softreset_count_max){
+//    soft_reset_function();
+//  }else{
+//    softreset_count++;
+//  }
 
   //while(time_counter < 3000){
 
@@ -497,6 +523,7 @@ void loop(){
     // process all leds
     for(uint8_t led_number=0;led_number<max_leds;led_number++){
       // Check and light up LEDs, decide to blink or wait
+      
       bleep(led_number);
 
       // prints status of LEDs
@@ -506,6 +533,10 @@ void loop(){
     // debug (newline)
     if(debug){ Serial.println(); }
 
+
+    // Overload check: if counter is about to overload, reset
+    overload_reset();
+  
     wdt_reset(); //kick the watchdog
 
     // a delay loop
